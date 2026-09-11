@@ -8,7 +8,7 @@ import {
   ALL_RESOURCES, 
   TEACHER_PROFILES, 
   DEFAULT_LEARNER_PROGRESS 
-} from "../../src/data/seedData.js";
+} from "../../src/App.js";
 
 // Safe database query helper with seamless in-memory fallback
 let dbInstance: any = null;
@@ -40,7 +40,7 @@ const sessionStore = {
       id: 1,
       userId: 1,
       planType: "monthly",
-      amountKsh: 499,
+      amountKsh: 1500,
       status: "active",
       currentPeriodStart: new Date().toISOString(),
       currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -51,7 +51,7 @@ const sessionStore = {
     {
       id: 1,
       userId: 1,
-      amountKsh: 499,
+      amountKsh: 1500,
       currency: "KSh",
       paymentMethod: "mpesa",
       referenceCode: "QGH891KLS2",
@@ -89,6 +89,9 @@ export default async (req: Request, context: Context) => {
     // 2. Authentication
     if (path === "auth/login" && method === "POST") {
       const { email, password } = await req.json();
+      if (typeof email !== "string" || !email.trim()) {
+        return new Response(JSON.stringify({ error: "A valid email address is required." }), { status: 400, headers: corsHeaders });
+      }
       const user = sessionStore.users.find(u => u.email.toLowerCase() === (email || "").toLowerCase());
       if (user) {
         return new Response(JSON.stringify({ success: true, user, token: `jwt-learnsci-${user.id}` }), { headers: corsHeaders });
@@ -107,6 +110,9 @@ export default async (req: Request, context: Context) => {
 
     if (path === "auth/register" && method === "POST") {
       const { name, email, role } = await req.json();
+      if (typeof email !== "string" || !email.trim()) {
+        return new Response(JSON.stringify({ error: "A valid email address is required." }), { status: 400, headers: corsHeaders });
+      }
       const existing = sessionStore.users.find(u => u.email === email);
       if (existing) {
         return new Response(JSON.stringify({ error: "User already exists with this email address." }), { status: 400, headers: corsHeaders });
@@ -147,6 +153,10 @@ export default async (req: Request, context: Context) => {
 
     if (path === "courses" && method === "POST") {
       const courseData = await req.json();
+      if (typeof courseData.title !== "string" || !courseData.title.trim() ||
+          typeof courseData.description !== "string" || !courseData.description.trim()) {
+        return new Response(JSON.stringify({ error: "Course title and description are required." }), { status: 400, headers: corsHeaders });
+      }
       const newCourse = {
         id: sessionStore.courses.length + 1,
         ...courseData,
@@ -282,6 +292,18 @@ export default async (req: Request, context: Context) => {
     if (path === "payments/checkout" && method === "POST") {
       const body = await req.json();
       const { paymentMethod, amountKsh, planType, phone, cardNumber } = body;
+      if (!["mpesa", "stripe_card"].includes(paymentMethod)) {
+        return new Response(JSON.stringify({ error: "Unsupported payment method." }), { status: 400, headers: corsHeaders });
+      }
+      if (!Number.isFinite(Number(amountKsh)) || Number(amountKsh) <= 0) {
+        return new Response(JSON.stringify({ error: "A valid payment amount is required." }), { status: 400, headers: corsHeaders });
+      }
+      if (paymentMethod === "mpesa" && (typeof phone !== "string" || !phone.trim())) {
+        return new Response(JSON.stringify({ error: "An M-Pesa phone number is required." }), { status: 400, headers: corsHeaders });
+      }
+      if (paymentMethod === "stripe_card" && (typeof cardNumber !== "string" || !cardNumber.trim())) {
+        return new Response(JSON.stringify({ error: "A card number is required." }), { status: 400, headers: corsHeaders });
+      }
 
       const refCode = paymentMethod === "mpesa" 
         ? `MPESA-${Math.random().toString(36).substring(2, 9).toUpperCase()}`
